@@ -1,0 +1,30 @@
+#!/usr/bin/bash
+
+<<'EOF'
+while IFS= read -r line
+do
+  nro="$line"
+done < wallpaper_number
+
+l=()
+for x in "/usr/share/backgrounds/wanderos/*; do
+    if [[ $x =~ .*\.jpg$ ]] ; then
+        l+=("$x")
+    fi;
+done;
+if [[ "${#l[@]}" == "0" ]] ; then
+    exit
+fi
+wall="${l[$nro]}"
+# wall="${l[RANDOM%${#l[@]}]}"
+feh --bg-fill "$wall"
+
+if [ $((nro+1)) -le %${#l[@]} ]
+then
+  echo $((nro+1)) >> wallpaper_number
+else
+  echo 1 >> wallpaper_number
+fi
+EOF
+
+feh --bg-fill --randomize /usr/share/backgrounds/wanderos/*.jpg

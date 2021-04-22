@@ -1,0 +1,23 @@
+#!/usr/bin/bash
+
+l=()
+while IFS= read -r line
+do
+  nro="$line"
+done < wallpaper_number
+
+for x in $(ls -f /usr/share/backgrounds/wanderos)
+do
+  l+=("$x")
+done
+
+wall="/usr/share/backgrounds/wanderos/${l[$nro]}"
+
+if [ $nro -le ${#l[@]} ]
+then
+  echo $((nro+1)) > wallpaper_number
+else
+  echo "1" > wallpaper_number
+fi
+
+feh --bg-fill $wall
