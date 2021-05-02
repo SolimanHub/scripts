@@ -15,9 +15,9 @@ wall="/usr/share/backgrounds/wanderos/${l[$nro]}"
 
 if [ $nro -le ${#l[@]} ]
 then
-  echo $((nro+1)) > wallpaper_number
+  echo $((nro+1)) > /opt/script/wallpaper_number
 else
-  echo "1" > wallpaper_number
+  echo "1" > /opt/script/wallpaper_number
 fi
 
 feh --bg-fill $wall
