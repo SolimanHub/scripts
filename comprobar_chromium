@@ -1,11 +1,8 @@
 #!/usr/bin/bash
 
-open=$( ps -aux | grep chromium | grep dse )
+open=$( ps -aux | grep chromium | grep -v S+ | grep -v "grep" | grep dse )
 
-if [ -n $open ]
+if [ -z $open ]
 then
- exec chromium 
-else
- exec chromium 
+  chromium
 fi
-echo

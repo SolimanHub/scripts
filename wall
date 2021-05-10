@@ -1,23 +1,25 @@
 #!/usr/bin/bash
 
 l=()
-while IFS= read -r line
-do
-  nro="$line"
-done < wallpaper_number
 
-for x in $(ls -f /usr/share/backgrounds/wanderos)
+for x in $(ls /usr/share/backgrounds/wanderos/)
 do
   l+=("$x")
 done
 
-wall="/usr/share/backgrounds/wanderos/${l[$nro]}"
+while IFS= read -r line
+do
+  nro="$line"
+done < /opt/script/nro_wall
 
-if [ $nro -le ${#l[@]} ]
+
+if [ $nro -eq ${#l[@]} ]
 then
-  echo $((nro+1)) > /opt/script/wallpaper_number
+  echo "1" > /opt/script/nro_wall
 else
-  echo "1" > /opt/script/wallpaper_number
+  echo $((nro+1)) > /opt/script/nro_wall
 fi
+
+wall="/usr/share/backgrounds/wanderos/${l[$nro]}"
 
 feh --bg-fill $wall
