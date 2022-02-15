@@ -7,7 +7,7 @@ do
 done < wallpaper_number
 
 l=()
-for x in "/usr/share/backgrounds/wanderos/*; do
+for x in "$HOME/Imágenes/wallpapers/*; do
     if [[ $x =~ .*\.jpg$ ]] ; then
         l+=("$x")
     fi;
@@ -27,4 +27,4 @@ else
 fi
 EOF
 
-feh --bg-fill --randomize /usr/share/backgrounds/wanderos/*.jpg
+feh --bg-fill --randomize $HOME/Imágenes/wallpapers/*.jpg
