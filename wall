@@ -2,24 +2,28 @@
 
 l=()
 
-for x in $(ls /usr/share/backgrounds/wanderos/)
+for x in $(ls $HOME/Imágenes/wallpapers/)
 do
-  l+=("$x")
+  if [ $x != 'salvar' ]
+  then
+    l+=("$x")
+    echo $x
+  fi
 done
 
 while IFS= read -r line
 do
   nro="$line"
-done < /opt/script/nro_wall
+done < /opt/scripts/nro_wall
 
 
 if [ $nro -eq ${#l[@]} ]
 then
-  echo "1" > /opt/script/nro_wall
+  echo "1" > /opt/scripts/nro_wall
 else
-  echo $((nro+1)) > /opt/script/nro_wall
+  echo $((nro+1)) > /opt/scripts/nro_wall
 fi
 
-wall="/usr/share/backgrounds/wanderos/${l[$nro]}"
+wall="$HOME/Imágenes/wallpapers/${l[$nro]}"
 
 feh --bg-fill $wall
