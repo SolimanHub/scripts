@@ -1,0 +1,13 @@
+echo -e "\e[01;31m"C-a	ir al principio
+echo C-e	ir al final
+echo C-b	retroceder un caracter
+echo C-f	avanzar un caracter
+echo C-u	borrar desde el _ hasta el principio
+echo C-k 	borrar desde el _ hasta el final
+echo C-w	borrar desde el _ hasta el principio de la palabra
+echo C-Shift-c and C-Shift-v
+echo C-l	limpiar pantalla
+echo C-r texto	buscar en el historial
+echo =========Alt=========
+echo f 		avanzar una palabra
+echo b		retroceder una palabra
