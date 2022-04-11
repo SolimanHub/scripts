@@ -1,6 +1,8 @@
 #!/usr/bin/bash
+#comprobar si un programa esta ejecutando 
+# en este ejemplo vemos a chromium
 
-open=$( ps -aux | grep chromium | grep -v S+ | grep -v "grep" | grep dse )
+open=$( ps -aux | grep chromium | grep -v S+ | grep -v "grep" | grep <user> )
 
 if [ -z $open ]
 then
