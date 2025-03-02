@@ -16,7 +16,7 @@ RESPONSE=$(curl -sS -X POST "https://api.mistral.ai/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $MISTRAL_API_KEY" \
   -d '{
-       "model": "open-mistral-nemo",
+       "model": "mistral-small-latest",
        "messages": [{"role": "user", "content": "'"$USER_PROMPT"'"}],
        "temperature": 0.7
       }')

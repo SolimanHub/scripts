@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# Códigos de color heredados
+COLOR_ERROR="\033[31m"
+COLOR_EXITO="\033[32m"
+COLOR_INFO="\033[33m"
+COLOR_RESET="\033[0m"
+
+funcion() {
+    # Verificar dependencias
+    if ! command -v curl >/dev/null 2>&1; then
+        echo -e "${COLOR_ERROR}Error: curl no está instalado. Por favor instálalo para continuar.${COLOR_RESET}"
+        return 127
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo -e "${COLOR_ERROR}Error: jq no está instalado. Por favor instálalo para continuar.${COLOR_RESET}"
+        return 127
+    fi
+
+    # Capturar el comando ingresado
+    local full_command="$*"
+    local modelo_ollama="qwen2.5:14b"
+    local modelo_mistral="mistral-small-latest"
+    
+    echo -e "\n${COLOR_ERROR}Error: El comando \"$full_command\" no se ha encontrado.${COLOR_RESET}"
+
+    # Preguntar al usuario si desea usar IA
+    echo -en "${COLOR_INFO}¿Desea usar IA para buscar la solución? (S/n): ${COLOR_RESET}"
+read -ei "S" use_ai
+    if [[ "${use_ai^^}" != "S" ]]; then
+        return 127
+    fi
+
+    # Solicitar detalles adicionales
+    echo -en "${COLOR_INFO}Agregue detalles de qué deseaba hacer con su comando: ${COLOR_RESET}"
+read -r details
+
+    # Construir el prompt
+    local prompt="Analiza el siguiente comando de la terminal de Linux ‘$full_command‘ y teniendo en cuenta que el usuario deseaba: '$details'. Responde estrictamente de la siguiente manera: "
+    prompt+="Si el comando contiene errores de ortografía o sintaxis, corrígelo y responde únicamente con la versión corregida. "
+    prompt+="Si el comando está escrito correctamente, respóndelo exactamente igual. "
+    prompt+="Si el comando es correcto pero no existe, responde únicamente con: no_suggestions. "
+    prompt+="La respuesta debe ser lo más breve posible, sin detalles ni palabrería, solo el comando resultante. "
+    prompt+="No incluyas explicaciones, detalles, comentarios ni ningún otro texto adicional."
+
+    consultar_mistral() {
+        [ -z "$MISTRAL_API_KEY" ] && return 1
+        
+        local payload=$(jq -n \
+            --arg prompt "$prompt" \
+            '{
+                "model": "mistral-small-latest",
+                "messages": [
+                    {"role": "user", "content": $prompt}
+                ],
+                "temperature": 0.3
+            }')
+
+        local respuesta=$(curl -s -X POST "https://api.mistral.ai/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $MISTRAL_API_KEY" \
+            -d "$payload")
+
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
+
+        local analisis=$(echo "$respuesta" | jq -r '.choices[0].message.content')
+        [ -z "$analisis" ] || [ "$analisis" = "null" ] && return 1
+
+        echo "$analisis"
+    }
+
+    consultar_ollama() {
+        local payload=$(jq -n \
+            --arg model "$modelo_ollama" \
+            --arg prompt "$prompt" \
+            '{model: $model, prompt: $prompt, stream: false}')
+
+        local respuesta=$(curl -s -X POST "http://localhost:11434/api/generate" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
+
+        local analisis=$(echo "$respuesta" | jq -r '.response')
+        [ -z "$analisis" ] || [ "$analisis" = "null" ] && return 1
+
+        echo "$analisis"
+    }
+
+    # Intentar primero con Mistral
+    echo -e "${COLOR_INFO}Consultando a Mistral API...${COLOR_RESET}"
+    local response=$(consultar_mistral)
+    local status=$?
+
+    if [ $status -ne 0 ]; then
+        echo -e "${COLOR_INFO}Fallando a Ollama local...${COLOR_RESET}"
+        response=$(consultar_ollama)
+        status=$?
+    fi
+
+    # Manejar respuesta
+    if [ $status -ne 0 ] || [ -z "$response" ]; then
+        echo -e "${COLOR_ERROR}Error: No se pudo obtener respuesta de los servicios de IA${COLOR_RESET}"
+        return 127
+    fi
+
+    if [[ "$response" == *"no_suggestions"* ]]; then
+        echo -e "${COLOR_ERROR}No se encontraron sugerencias.${COLOR_RESET}"
+        return 127
+    fi
+
+    # Mostrar resultado
+    echo -e "\n${COLOR_EXITO}Sugerencia:${COLOR_RESET} $response"
+}
+
+funcion "$@"

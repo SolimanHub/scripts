@@ -1,0 +1,201 @@
+#!/bin/bash
+
+# Configuración
+DIR_GENERADOS="$HOME/Documentos/generados"
+COLOR_ERROR="\033[31m"
+COLOR_EXITO="\033[32m"
+COLOR_INFO="\033[33m"
+COLOR_RESET="\033[0m"
+
+# Verificar dependencias
+check_dependencias() {
+    local dependencias=("curl" "jq" "file" "iconv")
+    local faltantes=()
+
+    for dep in "${dependencias[@]}"; do
+        if ! command -v "$dep" >/dev/null 2>&1; then
+            faltantes+=("$dep")
+        fi
+    done
+
+    if [ ${#faltantes[@]} -gt 0 ]; then
+        echo -e "${COLOR_ERROR}Error: Faltan dependencias: ${faltantes[*]}${COLOR_RESET}"
+        exit 1
+    fi
+}
+
+# Convertir archivo a texto
+convertir_a_texto() {
+    local archivo="$1"
+    local salida="$2"
+    
+    local mimetype=$(file --mime-type -b "$archivo")
+    local encoding=$(file -b --mime-encoding "$archivo")
+
+    if [[ $mimetype == "application/pdf" ]]; then
+        if ! command -v pdftotext >/dev/null 2>&1; then
+            echo -e "${COLOR_ERROR}Error: Necesitas instalar poppler (pdftotext)"
+            echo -e "Ejecuta: sudo pacman -S poppler${COLOR_RESET}"
+            exit 1
+        fi
+        pdftotext -layout "$archivo" "$salida" || return 1
+        
+    elif [[ $mimetype =~ ^(text/|application/json|application/xml) ]] || 
+         { LC_ALL=C grep -qI . "$archivo" && [[ $(stat -c %s "$archivo") -gt 0 ]]; }; then
+        iconv -f "$encoding" -t UTF-8//TRANSLIT "$archivo" > "$salida" || return 1
+        
+    else
+        echo -e "${COLOR_ERROR}Formato no soportado: $mimetype${COLOR_RESET}"
+        exit 1
+    fi
+
+    [ -s "$salida" ] || {
+        echo -e "${COLOR_ERROR}Archivo resultante vacío o error de conversión${COLOR_RESET}"
+        exit 1
+    }
+}
+
+# Consultar Mistral (versión corregida)
+consultar_mistral() {
+    local prompt="$1"
+    local contenido="$2"
+
+    [ -z "$MISTRAL_API_KEY" ] && return 1
+
+    local payload=$(jq -n \
+        --arg prompt "$prompt" \
+        --arg contenido "$contenido" \
+        '{
+            "model": "mistral-small-latest",
+            "messages": [
+                {"role": "user", "content": $prompt},
+                {"role": "user", "content": ("CONTENIDO DEL DOCUMENTO:\n" + $contenido)}
+            ],
+            "temperature": 0.3
+        }')
+
+    local respuesta=$(curl -s -X POST "https://api.mistral.ai/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $MISTRAL_API_KEY" \
+        -d "$payload")
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    local analisis=$(echo "$respuesta" | jq -r '.choices[0].message.content')
+    [ -z "$analisis" ] || [ "$analisis" = "null" ] && return 1
+
+    echo "$analisis"
+    return 0
+}
+
+# Consultar Ollama local
+consultar_ollama() {
+    local prompt="$1"
+    local contenido="$2"
+    
+    local payload modelo="qwen2.5-coder:14b" url="http://localhost:11434/api/generate"
+    
+    payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        --arg content "$contenido" \
+        '{model: $model, prompt: ($prompt + "\nCONTENIDO:\n" + $content), stream: false}')
+
+    local respuesta=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "$payload" "$url")
+
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+
+    local analisis=$(echo "$respuesta" | jq -r '.response')
+    [ -z "$analisis" ] || [ "$analisis" = "null" ] && return 1
+
+    echo "$analisis"
+    return 0
+}
+
+# Main
+check_dependencias
+
+if [ "$#" -lt 2 ]; then
+    echo -e "${COLOR_ERROR}Uso: analizar <ruta_al_documento> <prompt>${COLOR_RESET}"
+    exit 1
+fi
+
+archivo="$1"
+shift
+prompt="$*"
+inicio=$(date +%s%3N)
+servicio_usado=""
+analisis=""
+
+# Validar archivo
+[ -f "$archivo" ] || {
+    echo -e "${COLOR_ERROR}El archivo '$archivo' no existe${COLOR_RESET}"
+    exit 1
+}
+
+# Preparar directorio y archivos
+mkdir -p "$DIR_GENERADOS"
+archivo_txt="$DIR_GENERADOS/$(basename "${archivo%.*}").txt"
+
+# Convertir archivo
+convertir_a_texto "$archivo" "$archivo_txt"
+
+# Leer contenido
+contenido=$(<"$archivo_txt")
+
+# Intentar con Mistral primero
+echo -e "${COLOR_INFO}Intentando con Mistral API...${COLOR_RESET}"
+analisis=$(consultar_mistral "$prompt" "$contenido")
+if [ $? -eq 0 ]; then
+    servicio_usado="Mistral API (mistral-small-latest)"
+else
+    # Fallback a Ollama local
+    echo -e "${COLOR_INFO}Fallando a Ollama local...${COLOR_RESET}"
+    analisis=$(consultar_ollama "$prompt" "$contenido")
+    [ $? -eq 0 ] && servicio_usado="Ollama local (qwen2.5-coder:14b)"
+fi
+
+# Verificar respuesta final
+if [ -z "$analisis" ]; then
+    echo -e "${COLOR_ERROR}Error: No se pudo obtener análisis de ningún servicio${COLOR_RESET}"
+    exit 1
+fi
+
+# Generar reporte
+fin=$(date +%s%3N)
+tiempo_respuesta=$(echo "scale=2; ($fin - $inicio)/1000" | bc)
+fecha=$(date +"%Y-%m-%d %H:%M:%S")
+nombre_md="analisis_$(date +%Y%m%d_%H%M%S).md"
+
+cat <<-EOF > "$nombre_md"
+# Análisis realizado el $fecha
+
+**Documento analizado:**  
+$(basename "$archivo")
+
+**Servicio usado:**  
+$servicio_usado
+
+**Prompt:**  
+$prompt
+
+**Tiempo de respuesta:** ${tiempo_respuesta} segundos
+
+**Respuesta:**  
+$analisis
+
+EOF
+
+# Salida final
+echo -e "\n${COLOR_EXITO}Análisis completado:${COLOR_RESET}"
+echo -e "${COLOR_INFO}• Servicio usado: ${COLOR_EXITO}$servicio_usado"
+echo -e "${COLOR_INFO}• Tiempo total: ${tiempo_respuesta}s"
+echo -e "• Archivo de reporte: ${COLOR_EXITO}$nombre_md${COLOR_RESET}"
+echo -e "\n${COLOR_INFO}Respuesta:${COLOR_RESET}"
+echo "$analisis"

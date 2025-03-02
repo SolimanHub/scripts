@@ -1,0 +1,77 @@
+#!/bin/bash
+# ~/.local/bin/dime
+
+# Verificar dependencias
+if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
+    echo -e "\033[31mError: Necesitas tener instalados curl y jq\033[0m"
+    exit 1
+fi
+
+if [ "$#" -lt 1 ]; then
+    echo -e "\033[31mUso: dime <consulta>\033[0m"
+    exit 1
+fi
+
+# Construir el prompt
+query="$*"
+prompt="Responde solo con el comando exacto en archlinux, sin texto adicional, explicaciones ni formato extra. Si agregas algo más, la respuesta será inválida. Ejemplo correcto: ls Ejemplo incorrecto: 'El comando es: ls' ❌ Ahora, dame solo el comando para: $query"
+
+# Función para probar Mistral
+usar_mistral() {
+    [ -z "$MISTRAL_API_KEY" ] && return 1
+    
+    local respuesta=$(curl --silent --show-error --max-time 10 -X POST "https://api.mistral.ai/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $MISTRAL_API_KEY" \
+        -d '{
+            "model": "mistral-small-latest",
+            "messages": [{"role": "user", "content": "'"$prompt"'"}],
+            "temperature": 0.3
+        }')
+    
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+    
+    local comando=$(echo "$respuesta" | jq -r '.choices[0].message.content')
+    [ -z "$comando" ] || [ "$comando" = "null" ] && return 1
+    
+    echo -e "\033[32m$comando"
+    return 0
+}
+
+# Función para usar Ollama local
+usar_ollama() {
+    query="$*"
+    modelo="qwen2.5:14b"
+    url="http://localhost:11434/api/generate"
+    
+    payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        '{model: $model, prompt: $prompt, stream: false}')
+
+    local respuesta=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "$payload" "$url")
+    
+    if [ $? -ne 0 ]; then
+        return 1
+    fi
+    
+    local comando=$(echo "$respuesta" | jq -r '.response')
+    [ -z "$comando" ] || [ "$comando" = "null" ] && return 1
+    
+    echo -e "\033[32m$comando"
+    return 0
+}
+
+# Lógica principal
+if usar_mistral; then
+    exit 0
+elif usar_ollama; then
+    exit 0
+else
+    echo -e "\033[31mError: No se pudo conectar a ningún servicio de IA\033[0m"
+    exit 1
+fi
