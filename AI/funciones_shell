@@ -1,0 +1,269 @@
+
+function command_not_found_handle {
+    # Verificar dependencias: curl y jq
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "Error: curl no está instalado. Por favor instálalo para continuar."
+        return 127
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "Error: jq no está instalado. Por favor instálalo para continuar."
+        return 127
+    fi
+
+    # Capturar el comando ingresado
+    local full_command="$*"
+    local url="http://localhost:11434/api/generate"
+    local modelo="qwen2.5:14b"
+
+    echo -e "\nError: El comando \"$full_command\" no se ha encontrado."
+
+    # Preguntar al usuario si desea usar IA (valor predeterminado: S)
+    read -ep "¿Desea usar IA para buscar la solución? (S/n): " -i "S" use_ai
+    if [[ "${use_ai^^}" != "S" ]]; then
+        return 127
+    fi
+
+    # Solicitar detalles adicionales al usuario
+    read -p "Agregue detalles de qué deseaba hacer con su comando: " details
+
+    # Construir el prompt para la IA
+    local prompt="Analiza el siguiente comando de la terminal de Linux ‘$full_command‘ y teniendo en cuenta que el usuario deseaba: '$details'. Responde estrictamente de la siguiente manera: "
+    prompt+="Si el comando contiene errores de ortografía o sintaxis, corrígelo y responde únicamente con la versión corregida. "
+    prompt+="Si el comando está escrito correctamente, respóndelo exactamente igual. "
+    prompt+="Si el comando es correcto pero no existe, responde únicamente con: no_suggestions. "
+    prompt+="La respuesta debe ser lo más breve posible, sin detalles ni palabrería, solo el comando resultante. "
+    prompt+="No incluyas explicaciones, detalles, comentarios ni ningún otro texto adicional. Ejemplo: "
+    prompt+="Entrada: ‘doker exec -it my_container bash’ "
+    prompt+="Salida: ‘docker exec -it my_container bash’"
+
+    # Generar el payload JSON
+    local payload
+    payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        '{model: $model, prompt: $prompt, stream: false}')
+
+    # Realizar la consulta a la API
+    local api_response
+    api_response=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$url")
+    if [ $? -ne 0 ] || [ -z "$api_response" ]; then
+        echo "Error: No se pudo conectar con la API. Verifique su conexión o la URL de la API."
+        return 127
+    fi
+
+    # Extraer la respuesta de la API
+    local response
+    response=$(echo "$api_response" | jq -r '.response')
+    if [[ "$response" == *"no_suggestions"* ]] || [ -z "$response" ]; then
+        echo -e "\nNo se encontraron sugerencias."
+        return 127
+    fi
+
+    # Mostrar la respuesta de la IA y esperar el siguiente comando
+    echo "$response"
+}
+
+
+# Función para obtener comandos de Linux usando IA
+dime() {
+    if [ "$#" -lt 1 ]; then
+        echo "Uso: dime <consulta>"
+        return 1
+    fi
+
+    local query="$*"
+    local modelo="qwen2.5:14b"
+    #local url="http://localhost:11434/api/generate"
+    local url="http://192.168.0.20:11434/api/generate"
+
+    # Construir el prompt manteniendo la estructura original
+    local prompt="Responde solo con el comando exacto en archlinux, sin texto adicional, explicaciones ni formato extra. Si agregas algo más, la respuesta será inválida. Ejemplo correcto: ls Ejemplo incorrecto: 'El comando es: ls' ❌ Ahora, dame solo el comando para: $query"
+
+    # Construir el payload con jq para mejor manejo de JSON
+    local payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        '{model: $model, prompt: $prompt, stream: false}')
+
+    # Realizar la petición y procesar respuesta
+    curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$url" | \
+        jq -r '.response'
+}
+
+alias dime=dime
+
+#=======================
+# Función para analizar documentos con el modelo de IA
+# sudo pacman -S poppler jq bc
+analizar2() {
+    if [ "$#" -lt 2 ]; then
+        echo "Uso: analizar2 <ruta_al_documento> <prompt>"
+        return 1
+    fi
+
+    local inicio=$(date +%s%3N)
+    archivo="$1"
+    shift
+    prompt="$*"
+
+    if [ ! -f "$archivo" ]; then
+        echo "El archivo '$archivo' no existe."
+        return 1
+    fi
+
+    dir_generados="$HOME/Documentos/generados"
+    mkdir -p "$dir_generados"
+
+    archivo_txt="$dir_generados/$(basename "${archivo%.*}.txt")"
+
+    # Detección de tipo de archivo
+    mimetype=$(file --mime-type -b "$archivo")
+    encoding=$(file -b --mime-encoding "$archivo")
+
+    if [[ $mimetype == "application/pdf" ]]; then
+        if ! command -v pdftotext &> /dev/null; then
+            echo "Instala poppler para obtener pdftotext"
+            echo "sudo pacman -S poppler"
+            return 1
+        fi
+        pdftotext -layout "$archivo" "$archivo_txt" || return 1
+        
+    elif { [[ $mimetype == @(text/*|application/json|application/xml) ]] || \
+         { LC_ALL=C grep -qI . "$archivo" && [[ $(stat -c %s "$archivo") -gt 0 ]]; }; }; then
+        
+        iconv -f "$encoding" -t UTF-8//TRANSLIT "$archivo" > "$archivo_txt" || return 1
+        
+    else
+        echo "Formato no soportado ($mimetype)"
+        return 1
+    fi
+
+    [ ! -s "$archivo_txt" ] && { echo "Archivo resultante vacío"; return 1; }
+
+    contenido=$(<"$archivo_txt")
+    modelo="qwen2.5-coder:14b"
+    url="http://localhost:11434/api/generate"
+
+    # Construir payload y realizar consulta
+    payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        --arg content "$contenido" \
+        '{model: $model, prompt: ($prompt + "\nCONTENIDO:\n" + $content), stream: false}')
+        
+    respuesta=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$url" | jq -r '.response')
+    
+    # Calcular tiempo de respuesta
+    local fin=$(date +%s%3N)
+    local tiempo_respuesta=$(echo "scale=3; ($fin - $inicio)/1000/60" | bc)
+    
+    # Generar archivo de registro
+    local fecha=$(date +"%Y-%m-%d %H:%M:%S")
+    local nombre_md="analisis_$(date +%Y%m%d_%H%M%S).md"
+    
+    cat <<-EOF > "$nombre_md"
+# Análisis realizado el $fecha
+
+**Prompt:**  
+$prompt
+
+**Tiempo de respuesta:** ${tiempo_respuesta}m
+
+**Respuesta del modelo:**  
+$respuesta
+
+EOF
+
+    echo -e "\n\n=== Tiempo de respuesta: ${tiempo_respuesta} segundos ==="
+    echo "$respuesta"
+}
+
+alias analizar2=analizar2
+
+
+analizar() {
+    if [ "$#" -lt 2 ]; then
+        echo "Uso: analizar <ruta_al_documento> <prompt>"
+        return 1
+    fi
+
+    local inicio=$(date +%s%3N)
+    archivo="$1"
+    shift
+    prompt="$*"
+
+    if [ ! -f "$archivo" ]; then
+        echo "El archivo '$archivo' no existe."
+        return 1
+    fi
+
+    dir_generados="$HOME/Documentos/generados"
+    mkdir -p "$dir_generados"
+
+    archivo_txt="$dir_generados/$(basename "${archivo%.*}.txt")"
+
+    # Detección de tipo de archivo
+    mimetype=$(file --mime-type -b "$archivo")
+    encoding=$(file -b --mime-encoding "$archivo")
+
+    if [[ $mimetype == "application/pdf" ]]; then
+        if ! command -v pdftotext &> /dev/null; then
+            echo "Instala poppler para obtener pdftotext"
+            echo "sudo pacman -S poppler"
+            return 1
+        fi
+        pdftotext -layout "$archivo" "$archivo_txt" || return 1
+        
+    elif { [[ $mimetype == @(text/*|application/json|application/xml) ]] || \
+         { LC_ALL=C grep -qI . "$archivo" && [[ $(stat -c %s "$archivo") -gt 0 ]]; }; }; then
+        
+        iconv -f "$encoding" -t UTF-8//TRANSLIT "$archivo" > "$archivo_txt" || return 1
+        
+    else
+        echo "Formato no soportado ($mimetype)"
+        return 1
+    fi
+
+    [ ! -s "$archivo_txt" ] && { echo "Archivo resultante vacío"; return 1; }
+
+    contenido=$(<"$archivo_txt")
+    modelo="qwen2.5-coder:14b"
+    url="http://192.168.0.20:11434/api/generate"
+
+    # Construir payload y realizar consulta
+    payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        --arg content "$contenido" \
+        '{model: $model, prompt: ($prompt + "\nCONTENIDO:\n" + $content), stream: false}')
+        
+    respuesta=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload" "$url" | jq -r '.response')
+    
+    # Calcular tiempo de respuesta
+    local fin=$(date +%s%3N)
+    local tiempo_respuesta=$(echo "scale=3; ($fin - $inicio)/1000/60" | bc)
+    
+    # Generar archivo de registro
+    local fecha=$(date +"%Y-%m-%d %H:%M:%S")
+    local nombre_md="analisis_$(date +%Y%m%d_%H%M%S).md"
+    
+    cat <<-EOF > "$nombre_md"
+# Análisis realizado el $fecha
+
+**Prompt:**  
+$prompt
+
+**Tiempo de respuesta:** ${tiempo_respuesta}m
+
+**Respuesta del modelo:**  
+$respuesta
+
+EOF
+
+    echo -e "\n\n=== Tiempo de respuesta: ${tiempo_respuesta} segundos ==="
+    echo "$respuesta"
+}
+
+alias analizar=analizar
+
+export OLLAMA_MODELS="/home/rx/ollama_models/ollama_models"
