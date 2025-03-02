@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # screenshots stuff
+# se utiliza para tomar capturas de pantalla y copiarlas al portapapeles
 # TODO: docs
 
 function help_and_exit {
