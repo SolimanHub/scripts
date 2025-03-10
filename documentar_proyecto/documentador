@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Crear el archivo markdown con encabezado
+# este archivo contendra el nombre de los scripts y su codigo
+echo "Estructura de directorio y scripts:" > estructura.md
+echo -e "\n" >> estructura.md
+
+# Procesar cada elemento del directorio actual
+for elemento in *; do
+    if [ -f "$elemento" ] && [ "$elemento" != "estructura.md" ]; then
+        # Encabezado del script
+        echo "Código de script ${elemento}:" >> estructura.md
+        
+        # Contenido en bloque de código
+        echo '```bash' >> estructura.md
+        cat "$elemento" >> estructura.md
+        echo -e '\n```\n' >> estructura.md
+    fi
+done
+
+echo "Documentación generada en estructura.md"
+
