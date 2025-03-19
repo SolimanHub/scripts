@@ -1,22 +1,44 @@
 #!/bin/bash
 
-# Crear el archivo markdown con encabezado
-# este archivo contendra el nombre de los scripts y su codigo
-echo "Estructura de directorio y scripts:" > estructura.md
-echo -e "\n" >> estructura.md
+# Obtener rutas absolutas para exclusión
+SCRIPT_PATH=$(realpath "$0")
+OUTPUT_FILE="estructura.md"
 
-# Procesar cada elemento del directorio actual
-for elemento in *; do
-    if [ -f "$elemento" ] && [ "$elemento" != "estructura.md" ]; then
-        # Encabezado del script
-        echo "Código de script ${elemento}:" >> estructura.md
-        
-        # Contenido en bloque de código
-        echo '```bash' >> estructura.md
-        cat "$elemento" >> estructura.md
-        echo -e '\n```\n' >> estructura.md
+# Crear/limpiar archivo de salida
+echo "# Estructura de directorio y scripts" > "$OUTPUT_FILE"
+OUTPUT_PATH=$(realpath "$OUTPUT_FILE")
+
+# Función recursiva para procesar archivos
+process_file() {
+    local file="$1"
+    local file_abs=$(realpath "$file")
+    
+    # Excluir archivos de documentación y el propio script
+    if [[ "$file_abs" == "$SCRIPT_PATH" || "$file_abs" == "$OUTPUT_PATH" ]]; then
+        return
     fi
-done
 
-echo "Documentación generada en estructura.md"
+    # Detectar tipo de archivo usando MIME type
+    mime_type=$(file --mime-type -b "$file")
+    
+    # Filtrar archivos que no son texto
+    if [[ ! "$mime_type" =~ ^text/ && ! "$mime_type" =~ ^application/(x-shellscript|json|xml|yaml) ]]; then
+        return
+    fi
 
+    # Encabezado con ruta relativa
+    echo -e "\n## Archivo: ${file#./}" >> "$OUTPUT_FILE"
+    
+    # Bloque de código
+    echo '```' >> "$OUTPUT_FILE"
+    cat "$file" >> "$OUTPUT_FILE"
+    echo -e '\n```' >> "$OUTPUT_FILE"
+}
+
+# Búsqueda recursiva con find
+export -f process_file
+export SCRIPT_PATH OUTPUT_PATH OUTPUT_FILE
+
+find . -type f -exec bash -c 'process_file "$0"' {} \;
+
+echo "Documentación generada en $OUTPUT_FILE"
