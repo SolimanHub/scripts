@@ -2,11 +2,14 @@
 
 # Obtener rutas absolutas para exclusión
 SCRIPT_PATH=$(realpath "$0")
-OUTPUT_FILE="estructura.md"
+OUTPUT_FILE="codigo_de_este_proyecto.md"
 
 # Crear/limpiar archivo de salida
 echo "# Estructura de directorio y scripts" > "$OUTPUT_FILE"
 OUTPUT_PATH=$(realpath "$OUTPUT_FILE")
+echo '```' >> "$OUTPUT_FILE"
+tree -I "$OUTPUT_FILE" >> "$OUTPUT_FILE"
+echo '```' >> "$OUTPUT_FILE"
 
 # Función recursiva para procesar archivos
 process_file() {
