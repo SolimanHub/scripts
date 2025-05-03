@@ -2,7 +2,8 @@
 
 # Obtener rutas absolutas para exclusión
 SCRIPT_PATH=$(realpath "$0")
-OUTPUT_FILE="codigo_de_este_proyecto.md"
+DATE=$(($(date +%s%N)/1000000))
+OUTPUT_FILE="mapa_proyecto_${DATE}.md"
 
 # Crear/limpiar archivo de salida
 echo "# Estructura de directorio y scripts" > "$OUTPUT_FILE"
