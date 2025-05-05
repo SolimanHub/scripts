@@ -2,11 +2,8 @@
 
 # Obtener rutas absolutas para exclusión
 SCRIPT_PATH=$(realpath "$0")
-<<<<<<< Updated upstream
 DATE=$(($(date +%s%N)/1000000))
 OUTPUT_FILE="mapa_proyecto_${DATE}.md"
-=======
-OUTPUT_FILE="codigo_de_este_proyecto.md"
 OUTPUT_PATH=$(realpath "$OUTPUT_FILE")
 
 # Inicializar arrays para exclusión
@@ -42,7 +39,6 @@ if [[ "$1" == "-I" ]]; then
         TREE_EXCLUDE+="|$(IFS='|'; echo "${USER_PATTERNS[*]}")"
     fi
 fi
->>>>>>> Stashed changes
 
 # Crear/limpiar archivo de salida
 echo "# Estructura de directorio y scripts" > "$OUTPUT_FILE"
