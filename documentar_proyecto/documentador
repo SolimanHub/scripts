@@ -2,47 +2,98 @@
 
 # Obtener rutas absolutas para exclusión
 SCRIPT_PATH=$(realpath "$0")
+<<<<<<< Updated upstream
 DATE=$(($(date +%s%N)/1000000))
 OUTPUT_FILE="mapa_proyecto_${DATE}.md"
+=======
+OUTPUT_FILE="codigo_de_este_proyecto.md"
+OUTPUT_PATH=$(realpath "$OUTPUT_FILE")
+
+# Inicializar arrays para exclusión
+EXCLUSIONS=("$SCRIPT_PATH" "$OUTPUT_PATH")
+TREE_EXCLUDE="$OUTPUT_FILE"
+USER_PATTERNS=()
+
+# Procesar argumentos
+if [[ "$1" == "-I" ]]; then
+    shift
+    while [[ $# -gt 0 ]]; do
+        item="$1"
+        if [[ -e "$item" ]]; then
+            # Convertir a ruta absoluta y formatear
+            abs_path=$(realpath --canonicalize-missing "$item")
+            
+            # Determinar si es directorio y normalizar ruta
+            if [[ -d "$item" ]]; then
+                abs_path="${abs_path%/}/"
+            fi
+            
+            EXCLUSIONS+=("$abs_path")
+            
+            # Agregar patrón para tree (nombre base sin path)
+            base_name=$(basename "$item")
+            USER_PATTERNS+=("${base_name}")
+        fi
+        shift
+    done
+    
+    # Construir patrón para tree
+    if [[ ${#USER_PATTERNS[@]} -gt 0 ]]; then
+        TREE_EXCLUDE+="|$(IFS='|'; echo "${USER_PATTERNS[*]}")"
+    fi
+fi
+>>>>>>> Stashed changes
 
 # Crear/limpiar archivo de salida
 echo "# Estructura de directorio y scripts" > "$OUTPUT_FILE"
-OUTPUT_PATH=$(realpath "$OUTPUT_FILE")
 echo '```' >> "$OUTPUT_FILE"
-tree -I "$OUTPUT_FILE" >> "$OUTPUT_FILE"
+tree -I "$TREE_EXCLUDE" --matchdirs --noreport 2>/dev/null >> "$OUTPUT_FILE"
 echo '```' >> "$OUTPUT_FILE"
 
-# Función recursiva para procesar archivos
+# Exportar exclusiones como cadena multilínea
+export EXCLUSIONS_STR=$(printf "%s\n" "${EXCLUSIONS[@]}")
+
+# Función para procesar archivos
 process_file() {
     local file="$1"
-    local file_abs=$(realpath "$file")
+    local file_abs=$(realpath --canonicalize-missing "$file")
     
-    # Excluir archivos de documentación y el propio script
-    if [[ "$file_abs" == "$SCRIPT_PATH" || "$file_abs" == "$OUTPUT_PATH" ]]; then
-        return
-    fi
+    # Convertir string de exclusiones a array
+    IFS=$'\n' read -d '' -ra EXCLUDED <<< "$EXCLUSIONS_STR"
+    
+    # Verificar exclusiones
+    for excl in "${EXCLUDED[@]}"; do
+        # Comparación exacta para archivos
+        if [[ "$file_abs" == "$excl" ]]; then
+            return
+        fi
+        
+        # Si la exclusión es un directorio (termina con /)
+        if [[ "$excl" == */ ]]; then
+            # Eliminar dobles slashes accidentales
+            clean_excl="${excl/\/\///}"
+            if [[ "$file_abs" == "$clean_excl"* ]]; then
+                return
+            fi
+        fi
+    done
 
-    # Detectar tipo de archivo usando MIME type
+    # Filtrar por tipo MIME
     mime_type=$(file --mime-type -b "$file")
-    
-    # Filtrar archivos que no son texto
-    if [[ ! "$mime_type" =~ ^text/ && ! "$mime_type" =~ ^application/(x-shellscript|json|xml|yaml) ]]; then
-        return
-    fi
+    [[ "$mime_type" =~ ^text/|^application/(x-shellscript|json|xml|yaml) ]] || return
 
-    # Encabezado con ruta relativa
+    # Escribir en el documento
     echo -e "\n## Archivo: ${file#./}" >> "$OUTPUT_FILE"
-    
-    # Bloque de código
     echo '```' >> "$OUTPUT_FILE"
     cat "$file" >> "$OUTPUT_FILE"
     echo -e '\n```' >> "$OUTPUT_FILE"
 }
 
-# Búsqueda recursiva con find
 export -f process_file
-export SCRIPT_PATH OUTPUT_PATH OUTPUT_FILE
+export OUTPUT_FILE EXCLUSIONS_STR
 
-find . -type f -exec bash -c 'process_file "$0"' {} \;
+# Búsqueda recursiva con manejo de espacios en nombres
+find . -type f -print0 | xargs -0 -I{} bash -c 'process_file "{}"'
 
 echo "Documentación generada en $OUTPUT_FILE"
+cat $OUTPUT_FILE | xclip -selection clipboard
