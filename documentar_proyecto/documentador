@@ -76,7 +76,7 @@ process_file() {
 
     # Filtrar por tipo MIME
     mime_type=$(file --mime-type -b "$file")
-    [[ "$mime_type" =~ ^text/|^application/(x-shellscript|json|xml|yaml) ]] || return
+    [[ "$mime_type" =~ ^text/|^application/(x-shellscript|json|javascript|x-lua|xml|yaml) ]] || return
 
     # Escribir en el documento
     echo -e "\n## Archivo: ${file#./}" >> "$OUTPUT_FILE"
