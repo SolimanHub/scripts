@@ -1,0 +1,124 @@
+#!/bin/bash
+# ~/.local/bin/haz
+
+# Verificar dependencias
+if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
+    echo -e "\033[31mError: Necesitas tener instalados curl y jq\033[0m"
+    exit 1
+fi
+
+if [ "$#" -lt 1 ]; then
+    echo -e "\033[31mUso: dime <consulta>\033[0m"
+    exit 1
+fi
+
+# Construir el prompt
+query="$*"
+prompt="Responde solo con el comando exacto en archlinux, sin texto adicional, explicaciones ni formato extra.(agrega sudo solo si es necesario para operaciones críticas como instalaciones, actualizaciones o modificación de sistema). Ejemplos:
+Buena respuesta para 'actualizar sistema': sudo pacman -Syu
+Buena respuesta para 'listar archivos': ls, Si agregas algo más, la respuesta será inválida. Ejemplo correcto: ls Ejemplo incorrecto: 'El comando es: ls' ❌ Ahora, dame solo el comando para: $query"
+
+# Función para usar Ollama local
+usar_ollama() {
+    modelo="qwen2.5:14b"
+    url="http://localhost:11434/api/generate"
+    archivo_salida="salida.log"
+    
+    # Obtener comando de Ollama
+    payload=$(jq -n \
+        --arg model "$modelo" \
+        --arg prompt "$prompt" \
+        '{model: $model, prompt: $prompt, stream: false}')
+    
+    local respuesta=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -d "$payload" "$url")
+    
+    [ $? -ne 0 ] && return 1
+    
+    local comando=$(echo "$respuesta" | jq -r '.response')
+    [ -z "$comando" ] || [ "$comando" = "null" ] && return 1
+    
+    # Función para ejecutar con verificación de permisos
+    ejecutar_comando() {
+        local cmd="$1"
+        local necesita_sudo=0
+        
+        # Primera ejecución sin sudo
+        echo -e "\033[36m== Iniciando ejecución =="
+        eval "$cmd" 2>&1 | tee "$archivo_salida"
+        local exit_code=${PIPESTATUS}
+        
+        # Detectar error de permisos
+        if [ $exit_code -ne 0 ]; then
+            if grep -qi \
+                -e "error: you cannot perform this operation unless you are root" \
+                -e "permission denied" \
+                -e "operation not permitted" \
+                "$archivo_salida"; then
+                necesita_sudo=1
+            fi
+        fi
+
+        # Pedir sudo si es necesario
+        if [ $necesita_sudo -eq 1 ]; then
+            echo -en "\033[33m\n⚠ El comando requiere permisos de administrador. ¿Ejecutar con sudo? [s/N] \033[0m"
+            read -r respuesta
+            if [[ "$respuesta" =~ ^[Ss](i)?$ ]]; then
+                echo -e "\n\033[34mIngresa tu contraseña de sudo:\033[0m"
+                if ! sudo -v; then
+                    echo -e "\033[31m✖ Autenticación fallida\033[0m"
+                    return 1
+                fi
+                echo -e "\033[36m== Reejecutando con privilegios elevados =="
+                eval "sudo $cmd" 2>&1 | tee "$archivo_salida"
+                exit_code=${PIPESTATUS}
+            else
+                echo -e "\033[33m✖ Comando cancelado\033[0m"
+                return 1
+            fi
+        fi
+
+        return $exit_code
+    }
+
+    # Ejecutar y manejar permisos
+    echo -e "\033[32mComando generado: $comando"
+    if ejecutar_comando "$comando"; then
+        [ -s "$archivo_salida" ] && echo -e "\033[32m✔ Comando ejecutado exitosamente\033[0m"
+    else
+        echo -e "\033[31m✖ Error al ejecutar el comando (Código: $?)\033[0m"
+    fi
+
+    # Generar explicación (igual que antes)
+    if [ -s "$archivo_salida" ]; then
+        echo -e "\033[36m\nAnalizando resultados..."
+        contenido_salida=$(<"$archivo_salida")
+        prompt_explicacion="Explica brevemente (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
+        
+        payload_explicacion=$(jq -n \
+            --arg model "$modelo" \
+            --arg prompt "$prompt_explicacion" \
+            '{model: $model, prompt: $prompt, stream: false}')
+        
+        local explicacion=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload_explicacion" "$url" | jq -r '.response')
+        
+        echo -e "\033[37mExplicación:\n$explicacion"
+    else
+        echo -e "\033[33mEl comando no generó salida visible"
+    fi
+
+    return 0
+}
+
+# Lógica principal
+if usar_ollama; then
+    exit 0
+else
+    echo -e "\033[31mError: No se pudo conectar al servicio local de Ollama\033[0m"
+    exit 1
+fi
+
+
