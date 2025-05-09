@@ -1,5 +1,4 @@
 #!/bin/bash
-# ~/.local/bin/haz
 
 # Verificar dependencias
 if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
@@ -97,7 +96,7 @@ usar_ollama() {
         if [[ "$analizar" =~ ^[SsYy](i|es)?$ ]]; then
             echo -e "\033[36mAnalizando resultados..."
             contenido_salida=$(<"$archivo_salida")
-            prompt_explicacion="Explica brevemente (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
+            prompt_explicacion="Explica brevemente EN ESPAÑOL (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
             
             payload_explicacion=$(jq -n \
                 --arg model "$modelo" \
