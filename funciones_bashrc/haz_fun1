@@ -47,7 +47,7 @@ usar_ollama() {
         # Primera ejecución sin sudo
         echo -e "\033[36m== Iniciando ejecución =="
         eval "$cmd" 2>&1 | tee "$archivo_salida"
-        local exit_code=${PIPESTATUS[0]}
+        local exit_code=${PIPESTATUS}
         
         # Detectar error de permisos
         if [ $exit_code -ne 0 ]; then
@@ -72,7 +72,7 @@ usar_ollama() {
                 fi
                 echo -e "\033[36m== Reejecutando con privilegios elevados =="
                 eval "sudo $cmd" 2>&1 | tee "$archivo_salida"
-                exit_code=${PIPESTATUS[0]}
+                exit_code=${PIPESTATUS}
             else
                 echo -e "\033[33m✖ Comando cancelado\033[0m"
                 return 1
@@ -90,30 +90,24 @@ usar_ollama() {
         echo -e "\033[31m✖ Error al ejecutar el comando (Código: $?)\033[0m"
     fi
 
-    # Confirmación interactiva antes de análisis
+    # Generar explicación (igual que antes)
     if [ -s "$archivo_salida" ]; then
-        echo -en "\033[36m¿Deseas analizar los resultados? [s/N] \033[0m"
-        read -r analizar
-        if [[ "$analizar" =~ ^[SsYy](i|es)?$ ]]; then
-            echo -e "\033[36mAnalizando resultados..."
-            contenido_salida=$(<"$archivo_salida")
-            prompt_explicacion="Explica brevemente (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
-            
-            payload_explicacion=$(jq -n \
-                --arg model "$modelo" \
-                --arg prompt "$prompt_explicacion" \
-                '{model: $model, prompt: $prompt, stream: false}')
-            
-            local explicacion=$(curl -s -X POST \
-                -H "Content-Type: application/json" \
-                -d "$payload_explicacion" "$url" | jq -r '.response')
-            
-            echo -e "\033[37mExplicación:\n$explicacion"
-        else
-            echo -e "\033[33mAnálisis cancelado por el usuario"
-        fi
+        echo -e "\033[36m\nAnalizando resultados..."
+        contenido_salida=$(<"$archivo_salida")
+        prompt_explicacion="Explica brevemente (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
+        
+        payload_explicacion=$(jq -n \
+            --arg model "$modelo" \
+            --arg prompt "$prompt_explicacion" \
+            '{model: $model, prompt: $prompt, stream: false}')
+        
+        local explicacion=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload_explicacion" "$url" | jq -r '.response')
+        
+        echo -e "\033[37mExplicación:\n$explicacion"
     else
-        echo -e "\033[33mEl comando no generó salida para analizar"
+        echo -e "\033[33mEl comando no generó salida visible"
     fi
 
     return 0
@@ -126,4 +120,5 @@ else
     echo -e "\033[31mError: No se pudo conectar al servicio local de Ollama\033[0m"
     exit 1
 fi
+
 
