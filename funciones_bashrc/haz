@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Función para generar nombre de archivo con timestamp
+generar_nombre_archivo_md() {
+    fecha_hora=$(date +"%Y-%m-%d_%H-%M-%S")
+    echo "haz_command_${fecha_hora}.md"
+}
+
 # Verificar dependencias
 if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
     echo -e "\033[31mError: Necesitas tener instalados curl y jq\033[0m"
@@ -7,7 +13,7 @@ if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
 fi
 
 if [ "$#" -lt 1 ]; then
-    echo -e "\033[31mUso: dime <consulta>\033[0m"
+    echo -e "\033[31mUso: haz <consulta>\033[0m"
     exit 1
 fi
 
@@ -19,9 +25,9 @@ Buena respuesta para 'listar archivos': ls, Si agregas algo más, la respuesta s
 
 # Función para usar Ollama local
 usar_ollama() {
+    archivo_md=$(generar_nombre_archivo_md)
     modelo="qwen2.5:14b"
     url="http://localhost:11434/api/generate"
-    archivo_salida="salida.log"
     
     # Obtener comando de Ollama
     payload=$(jq -n \
@@ -36,16 +42,23 @@ usar_ollama() {
     [ $? -ne 0 ] && return 1
     
     local comando=$(echo "$respuesta" | jq -r '.response')
-    [ -z "$comando" ] || [ "$comando" = "null" ] && return 1
-    
+    [ -z "$comando"] || [ "$comando" = "null" ] && return 1
+
+    # Crear archivo markdown con estructura inicial
+    echo -e "# Registro de comando - $(date +"%Y-%m-%d_%H-%M-%S")\n" > "$archivo_md"
+    echo -e "**Prompt del usuario:**\n\`\`\`\n${query}\n\`\`\`\n" >> "$archivo_md"
+    echo -e "## Comando generado\n\`\`\`bash\n${comando}\n\`\`\`\n" >> "$archivo_md"
+    echo -e "## Salida del comando\n\`\`\`text\n" >> "$archivo_md"  # Nuevo encabezado
+
     # Función para ejecutar con verificación de permisos
     ejecutar_comando() {
         local cmd="$1"
         local necesita_sudo=0
+        local initial_size=$(stat -c %s "$archivo_md")
         
         # Primera ejecución sin sudo
         echo -e "\033[36m== Iniciando ejecución =="
-        eval "$cmd" 2>&1 | tee "$archivo_salida"
+        eval "$cmd" 2>&1 | tee -a "$archivo_md"
         local exit_code=${PIPESTATUS[0]}
         
         # Detectar error de permisos
@@ -54,7 +67,7 @@ usar_ollama() {
                 -e "error: you cannot perform this operation unless you are root" \
                 -e "permission denied" \
                 -e "operation not permitted" \
-                "$archivo_salida"; then
+                "$archivo_md"; then
                 necesita_sudo=1
             fi
         fi
@@ -70,7 +83,7 @@ usar_ollama() {
                     return 1
                 fi
                 echo -e "\033[36m== Reejecutando con privilegios elevados =="
-                eval "sudo $cmd" 2>&1 | tee "$archivo_salida"
+                eval "sudo $cmd" 2>&1 | sudo tee -a "$archivo_md" >/dev/null
                 exit_code=${PIPESTATUS[0]}
             else
                 echo -e "\033[33m✖ Comando cancelado\033[0m"
@@ -78,24 +91,34 @@ usar_ollama() {
             fi
         fi
 
+        # Verificar si hubo salida del comando
+        local new_size=$(stat -c %s "$archivo_md")
+        [ "$new_size" -gt "$initial_size" ] && return 2  # Código especial para indicar que hubo salida
         return $exit_code
     }
 
     # Ejecutar y manejar permisos
     echo -e "\033[32mComando generado: $comando"
-    if ejecutar_comando "$comando"; then
-        [ -s "$archivo_salida" ] && echo -e "\033[32m✔ Comando ejecutado exitosamente\033[0m"
+    ejecutar_comando "$comando"
+    local resultado_ejecucion=$?
+    
+    # Manejar resultados
+    if [ $resultado_ejecucion -eq 0 ]; then
+        echo -e "\033[32m✔ Comando ejecutado exitosamente\033[0m"
+    elif [ $resultado_ejecucion -eq 2 ]; then
+        echo -e "\033[32m✔ Comando ejecutado con salida\033[0m"
     else
-        echo -e "\033[31m✖ Error al ejecutar el comando (Código: $?)\033[0m"
+        echo -e "\033[31m✖ Error al ejecutar el comando (Código: $resultado_ejecucion)\033[0m"
     fi
 
     # Confirmación interactiva antes de análisis
-    if [ -s "$archivo_salida" ]; then
+    if [ $resultado_ejecucion -eq 2 ] || [ $resultado_ejecucion -ne 0 ]; then
         echo -en "\033[36m¿Deseas analizar los resultados? [s/N] \033[0m"
         read -r analizar
         if [[ "$analizar" =~ ^[SsYy](i|es)?$ ]]; then
             echo -e "\033[36mAnalizando resultados..."
-            contenido_salida=$(<"$archivo_salida")
+            contenido_salida=$(tail -n +8 "$archivo_md")  # Saltar encabezados
+            
             prompt_explicacion="Explica brevemente EN ESPAÑOL (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
             
             payload_explicacion=$(jq -n \
@@ -107,6 +130,8 @@ usar_ollama() {
                 -H "Content-Type: application/json" \
                 -d "$payload_explicacion" "$url" | jq -r '.response')
             
+            # Cerrar bloque de código y agregar análisis
+            echo -e "\n\`\`\`\n## Análisis de resultados\n${explicacion}" >> "$archivo_md"
             echo -e "\033[37mExplicación:\n$explicacion"
         else
             echo -e "\033[33mAnálisis cancelado por el usuario"
