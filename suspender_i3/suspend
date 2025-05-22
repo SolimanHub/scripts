@@ -2,7 +2,7 @@
 while true; do
   idle_time=$(xprintidle)
   # idle_time está en milisegundos, aquí 5 minutos = 300000 ms
-  if [ "$idle_time" -gt 300000 ]; then
+  if [ "$idle_time" -gt 60000 ]; then
     systemctl suspend
   fi
   sleep 60
