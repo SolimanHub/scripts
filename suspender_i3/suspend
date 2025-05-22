@@ -1,9 +1,14 @@
 #!/bin/bash
 while true; do
   idle_time=$(xprintidle)
-  # idle_time está en milisegundos, aquí 5 minutos = 300000 ms
-  if [ "$idle_time" -gt 60000 ]; then
-    systemctl suspend
+  control_file="$HOME/Cocina/scripts/suspender_i3/control"
+  control=$(cat "$control_file" | tr -d '\n\r\t ' | head -c 1)  # Solo primer carácter
+  
+  # Convertir a entero explícitamente
+  control=$((control))
+
+  if [[ "$idle_time" -gt 60000 && "$control" -eq 1 ]]; then
+      systemctl suspend
   fi
   sleep 60
 done

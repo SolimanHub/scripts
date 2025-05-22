@@ -1,0 +1,20 @@
+#!/bin/bash
+suspend_icon() {
+ARCHIVO="$HOME/Cocina/scripts/suspender_i3/control"
+
+if [ ! -f "$ARCHIVO" ]; then
+    touch "$ARCHIVO"
+fi
+
+contenido=$(cat "$ARCHIVO" | tr -d '\n')
+
+if [ "$contenido" == "1" ]; then
+  echo "✔️"
+else
+  echo "🔴"
+fi
+
+}
+
+suspend_icon
+

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+ARCHIVO="$HOME/Cocina/scripts/suspender_i3/control"
+
+if [ ! -f "$ARCHIVO" ]; then
+    touch "$ARCHIVO"
+fi
+
+contenido=$(cat "$ARCHIVO" | tr -d '\n')
+
+if [[ $(cat "$ARCHIVO") == "1" ]]; then
+    printf "0" > "$ARCHIVO"
+else
+    printf "1" > "$ARCHIVO"
+fi
