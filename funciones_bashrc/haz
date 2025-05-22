@@ -21,7 +21,7 @@ fi
 query="$*"
 prompt="Responde solo con el comando exacto en archlinux, sin texto adicional, explicaciones ni formato extra.(agrega sudo solo si es necesario para operaciones críticas como instalaciones, actualizaciones o modificación de sistema). Ejemplos:
 Buena respuesta para 'actualizar sistema': sudo pacman -Syu
-Buena respuesta para 'listar archivos': ls, Si agregas algo más, la respuesta será inválida. Ejemplo correcto: ls Ejemplo incorrecto: 'El comando es: ls' ❌ Ahora, dame solo el comando para: $query"
+Buena respuesta para 'listar archivos': ls, Si agregas algo más, la respuesta será inválida. Ejemplo correcto: ls Ejemplo incorrecto: 'El comando es: ls' ❌ Ahora, dame solo el comando para: haz $query"
 
 # Función para usar Ollama local
 usar_ollama() {

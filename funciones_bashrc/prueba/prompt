@@ -1,0 +1,61 @@
+
+Modelos ya probados: 
+- deepseek-r1:1.5b (bien)
+- gemma3:1b (mal)
+- ollama run qwen3:0.6b (pendiente)
+- ollama run qwen3:1.7b (pendiente)
+- ollama run llama3.2:1b (pendiente)
+- ollama run qwen2.5:0.5b
+- ollama run qwen2.5:1.5b 
+- ollama run qwen2.5:3b 
+- ollama run qwen2.5-coder:0.5b 
+- ollama run qwen2.5-coder:1.5b 
+- ollama run qwen2.5-coder:3b 
+
+
+
+datos: estas labores se realizan sobre el SO archlinux.
+a continuacion te voy a pasar un prompt el cual debes analizar detenidamente, tu trabajo sera indicar si la salida de ese prompt es un solo comando o una lista de comandos, si la salida es un solo comando responde indicando el comando sin ninguna explicacion, si la salida es una lista, responde con una lista ordenada de comandos sin explicaciones ni numeracion. ejemplo: si te paso el prompt "dime el comando para listar los archivos del dir actual" la salida sera un solo comando `ls`, entonces tu respuesta debe ser el comando sin explicaciones ni extras, solo el comando, ahora si el prompt es este otro: "haz un directorio llamado website que contenga un fichero llamado index.html" la salida de ese prompt debe ser algo como (mkdir website; touch website/index.html; cat > index.html <<EOF
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Página Web</title>
+</head>
+<body>
+  <header>
+    <nav>
+      <!-- Navegación principal -->
+    </nav>
+  </header>
+  <main>
+    <section>
+      <h1>Título principal</h1>
+      <p>Contenido principal de la página.</p>
+    </section>
+    <aside>
+      <!-- Barra lateral o información adicional -->
+    </aside>
+  </main>
+  <footer>
+    <p>&copy; 2025 Mi Sitio Web</p>
+  </footer>
+</body>
+</html>
+EOF
+) como puedes ver es una lista ordenada de comandos que se deben ejecutar para cumplir con el requerimiento del prompt
+el prompt que quiero que analices es este
+prompt a analizar:
+'haz un directorio llamado personal_web, el directorio debe tener un fichero index.html con la estructura basica de un sitio web. el titulo del sitio es `Mi web personal` el codigo dentro de index.html debe ser semanticamente bien estructurado y contener todo lo necesario para una presentacion personal, inventa informacion para un programador
+'
+
+
+# Prompt que distingue si es unico o lista
+os: estas labores se realizan sobre el SO archlinux.
+a continuacion te voy a pasar un prompt el cual debes analizar detenidamente, tu trabajo sera indicar si la salidade ese prompt es un solo comando o una lista de comandos , si la salida es un solo comando responde la palabra "unico" si la salida es una lista, responde la palabra "lista". ejemplo: si te paso el prompt "dime el comando para listar los archivos del dir actual" (obviamente ese comando es el comando `ls`) por lo que la salida sera un solo comando, entonces tu respuesta debe ser la palabra 'unico' 
+ahora si el prompt es este otro: "haz un directorio llamado website que contenga un fichero llamado index.html" (la salida de este prompt seguramente serian los comandos mkdir website, touch website/index.html) como son dos comando tu respuesta debe ser "lista"
+ el prompt que quiero que analices es este
+ prompt a analizar:
+ 'un directorio llamado website, el directorio debe tener un fichero index.html con la estructura basica de un sitio web. el titulo del sitio es Comando HAZ el codigo dentro de index.html debe ser semanticamente bien estructurado'
+ recuerda que tu respuesta solo debe ser la palabra 'unico' o 'lista'
