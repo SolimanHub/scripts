@@ -92,4 +92,3 @@ export OUTPUT_FILE EXCLUSIONS_STR
 find . -type f -print0 | xargs -0 -I{} bash -c 'process_file "{}"'
 
 echo "Documentación generada en $OUTPUT_FILE"
-cat $OUTPUT_FILE | xclip -selection clipboard
