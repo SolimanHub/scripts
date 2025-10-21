@@ -6,6 +6,35 @@ generar_nombre_archivo_md() {
     echo "haz_command_${fecha_hora}.md"
 }
 
+# Función para validar comandos peligrosos
+es_comando_seguro() {
+    local cmd="$1"
+    # Lista de patrones peligrosos
+    local peligrosos=(
+        "rm -rf /"
+        "rm -rf ~"
+        "dd if="
+        "mkfs"
+        "fdisk"
+        "parted"
+        ":(){ :|:& };:"
+        "shutdown -h now"
+        "reboot"
+        "mv / /dev/null"
+        "chmod -R 777 /"
+        "chown -R root:root /"
+        "> /dev/sda"
+        "dd of=/dev/sda"
+    )
+    
+    for peligro in "${peligrosos[@]}"; do
+        if [[ "$cmd" == *"$peligro"* ]]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
 # Verificar dependencias
 if ! command -v curl >/dev/null || ! command -v jq >/dev/null; then
     echo -e "\033[31mError: Necesitas tener instalados curl y jq\033[0m"
@@ -17,16 +46,45 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-# Construir el prompt
+# Construir el prompt ultra-seguro
 query="$*"
-prompt="Responde solo con el comando exacto en archlinux, sin texto adicional, explicaciones ni formato extra.(agrega sudo solo si es necesario para operaciones críticas como instalaciones, actualizaciones o modificación de sistema). Ejemplos:
-Buena respuesta para 'actualizar sistema': sudo pacman -Syu
-Buena respuesta para 'listar archivos': ls, Si agregas algo más, la respuesta será inválida. Ejemplo correcto: ls Ejemplo incorrecto: 'El comando es: ls' ❌ Ahora, dame solo el comando para: haz $query"
+my_system=$(hostnamectl | grep -E "Operating System|Kernel|Architecture" | head -n 3)
+
+prompt="Eres un asistente técnico especializado en Arch Linux. Tu tarea es generar **exactamente un solo comando de terminal válido y seguro** que cumpla con la solicitud del usuario.
+
+REGLAS ABSOLUTAS:
+1. **NUNCA** añadas explicaciones, comentarios, notas ni texto adicional.
+2. **SOLO** devuelve el comando puro, en una sola línea.
+3. **PROHIBIDO** usar:
+   - \$(...) o acentos graves (backticks)
+   - variables como \$HOME, \$USER, etc.
+   - comillas dobles que contengan \$ o comandos
+   - texto explicativo dentro del comando
+4. Si necesitas mostrar información del sistema (fecha, hora, etc.), usa directamente el comando que la genera (ej: 'date', 'ls', 'pwd').
+5. Para escribir contenido estático en un archivo, usa: echo 'contenido' > archivo  (con comillas simples)
+   - Si hay saltos de línea, usa: echo -e 'línea1\\nlínea2' > archivo
+   - Escapa comillas simples como '\''
+6. Usa rutas relativas (como xxx) si el archivo está en el directorio actual.
+7. Usa **sudo solo si es estrictamente necesario**.
+8. Si la solicitud es ambigua o peligrosa, responde: ERROR: solicitud no segura
+
+Contexto del sistema:
+$my_system
+
+Ejemplos CORRECTOS:
+- Usuario: 'dime la fecha' → date
+- Usuario: 'muestra la hora' → date +%H:%M
+- Usuario: 'fecha de ayer' → date -d \"yesterday\"
+- Usuario: 'crea saludo.txt con Hola' → echo 'Hola' > saludo.txt
+- Usuario: 'crea index.html con HTML básico' → echo -e '<!DOCTYPE html>\\n<html lang=\"es\">\\n<head>\\n<meta charset=\"UTF-8\">\\n<title>Página</title>\\n</head>\\n<body>\\n<h1>Hola</h1>\\n</body>\\n</html>' > index.html
+
+Ahora, responde **solo con el comando exacto** para esta solicitud en Arch Linux:
+haz $query"
 
 # Función para usar Ollama local
 usar_ollama() {
     archivo_md=$(generar_nombre_archivo_md)
-    modelo="qwen2.5:14b"
+    modelo="mistral:7b-instruct-v0.3-q4_K_M"
     url="http://localhost:11434/api/generate"
     
     # Obtener comando de Ollama
@@ -42,13 +100,43 @@ usar_ollama() {
     [ $? -ne 0 ] && return 1
     
     local comando=$(echo "$respuesta" | jq -r '.response')
-    [ -z "$comando"] || [ "$comando" = "null" ] && return 1
+    [ -z "$comando" ] || [ "$comando" = "null" ] && return 1
 
-    # Crear archivo markdown con estructura inicial
+    # Limpiar la respuesta: quitar saltos de línea innecesarios al inicio/final, comillas sueltas
+    comando=$(echo "$comando" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # Manejar errores del modelo
+    if [[ "$comando" == ERROR:* ]]; then
+        echo -e "\033[31m✖ $comando\033[0m"
+        echo -e "# Registro de comando - $(date +"%Y-%m-%d_%H-%M-%S")\n" > "$archivo_md"
+        echo -e "**Prompt del usuario:**\n\`\`\`\n${query}\n\`\`\`\n" >> "$archivo_md"
+        echo -e "**Error del modelo:** $comando" >> "$archivo_md"
+        return 1
+    fi
+
+    # 🔒 Validación extra: bloquear expansión de subcomandos
+    if [[ "$comando" == *'$('* ]] || [[ "$comando" == *'`'* ]]; then
+        echo -e "\033[31m✖ Comando rechazado: contiene expansión de subcomandos (\$() o backticks)\033[0m"
+        echo -e "# Registro de comando - $(date +"%Y-%m-%d_%H-%M-%S")\n" > "$archivo_md"
+        echo -e "**Prompt del usuario:**\n\`\`\`\n${query}\n\`\`\`\n" >> "$archivo_md"
+        echo -e "**Comando rechazado:** $comando" >> "$archivo_md"
+        return 1
+    fi
+
+    # Validar seguridad (comandos destructivos)
+    if ! es_comando_seguro "$comando"; then
+        echo -e "\033[31m✖ Comando bloqueado por seguridad: contiene operaciones peligrosas\033[0m"
+        echo -e "# Registro de comando - $(date +"%Y-%m-%d_%H-%M-%S")\n" > "$archivo_md"
+        echo -e "**Prompt del usuario:**\n\`\`\`\n${query}\n\`\`\`\n" >> "$archivo_md"
+        echo -e "**Comando rechazado por seguridad:** $comando" >> "$archivo_md"
+        return 1
+    fi
+
+    # Crear archivo markdown
     echo -e "# Registro de comando - $(date +"%Y-%m-%d_%H-%M-%S")\n" > "$archivo_md"
     echo -e "**Prompt del usuario:**\n\`\`\`\n${query}\n\`\`\`\n" >> "$archivo_md"
     echo -e "## Comando generado\n\`\`\`bash\n${comando}\n\`\`\`\n" >> "$archivo_md"
-    echo -e "## Salida del comando\n\`\`\`text\n" >> "$archivo_md"  # Nuevo encabezado
+    echo -e "## Salida del comando\n\`\`\`text\n" >> "$archivo_md"
 
     # Función para ejecutar con verificación de permisos
     ejecutar_comando() {
@@ -56,23 +144,22 @@ usar_ollama() {
         local necesita_sudo=0
         local initial_size=$(stat -c %s "$archivo_md")
         
-        # Primera ejecución sin sudo
         echo -e "\033[36m== Iniciando ejecución =="
         eval "$cmd" 2>&1 | tee -a "$archivo_md"
         local exit_code=${PIPESTATUS[0]}
         
-        # Detectar error de permisos
         if [ $exit_code -ne 0 ]; then
             if grep -qi \
                 -e "error: you cannot perform this operation unless you are root" \
                 -e "permission denied" \
                 -e "operation not permitted" \
+                -e "EACCES" \
+                -e "EPERM" \
                 "$archivo_md"; then
                 necesita_sudo=1
             fi
         fi
 
-        # Pedir sudo si es necesario
         if [ $necesita_sudo -eq 1 ]; then
             echo -en "\033[33m\n⚠ El comando requiere permisos de administrador. ¿Ejecutar con sudo? [s/N] \033[0m"
             read -r respuesta
@@ -91,18 +178,17 @@ usar_ollama() {
             fi
         fi
 
-        # Verificar si hubo salida del comando
         local new_size=$(stat -c %s "$archivo_md")
-        [ "$new_size" -gt "$initial_size" ] && return 2  # Código especial para indicar que hubo salida
+        [ "$new_size" -gt "$initial_size" ] && return 2
         return $exit_code
     }
 
-    # Ejecutar y manejar permisos
-    echo -e "\033[32mComando generado: $comando"
+    echo -e "\033[32mComando generado: $comando\033[0m"
     ejecutar_comando "$comando"
     local resultado_ejecucion=$?
     
-    # Manejar resultados
+    echo -e "\n\`\`\`" >> "$archivo_md"
+
     if [ $resultado_ejecucion -eq 0 ]; then
         echo -e "\033[32m✔ Comando ejecutado exitosamente\033[0m"
     elif [ $resultado_ejecucion -eq 2 ]; then
@@ -111,13 +197,12 @@ usar_ollama() {
         echo -e "\033[31m✖ Error al ejecutar el comando (Código: $resultado_ejecucion)\033[0m"
     fi
 
-    # Confirmación interactiva antes de análisis
     if [ $resultado_ejecucion -eq 2 ] || [ $resultado_ejecucion -ne 0 ]; then
         echo -en "\033[36m¿Deseas analizar los resultados? [s/N] \033[0m"
         read -r analizar
         if [[ "$analizar" =~ ^[SsYy](i|es)?$ ]]; then
             echo -e "\033[36mAnalizando resultados..."
-            contenido_salida=$(tail -n +8 "$archivo_md")  # Saltar encabezados
+            contenido_salida=$(awk '/^```text$/,/^```$/{if (!/^```/ && !/^##/ && !/^#/) print}' "$archivo_md" | head -n -1)
             
             prompt_explicacion="Explica brevemente EN ESPAÑOL (3 líneas máximo) qué ocurrió al ejecutar el comando '$comando' en Arch Linux. Salida del comando: \"\"\"$contenido_salida\"\"\""
             
@@ -130,14 +215,13 @@ usar_ollama() {
                 -H "Content-Type: application/json" \
                 -d "$payload_explicacion" "$url" | jq -r '.response')
             
-            # Cerrar bloque de código y agregar análisis
-            echo -e "\n\`\`\`\n## Análisis de resultados\n${explicacion}" >> "$archivo_md"
-            echo -e "\033[37mExplicación:\n$explicacion"
+            echo -e "\n## Análisis de resultados\n${explicacion}" >> "$archivo_md"
+            echo -e "\033[37mExplicación:\n$explicacion\033[0m"
         else
-            echo -e "\033[33mAnálisis cancelado por el usuario"
+            echo -e "\033[33mAnálisis cancelado por el usuario\033[0m"
         fi
     else
-        echo -e "\033[33mEl comando no generó salida para analizar"
+        echo -e "\033[33mEl comando no generó salida para analizar\033[0m"
     fi
 
     return 0
@@ -150,4 +234,3 @@ else
     echo -e "\033[31mError: No se pudo conectar al servicio local de Ollama\033[0m"
     exit 1
 fi
-
