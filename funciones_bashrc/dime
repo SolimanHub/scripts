@@ -43,7 +43,7 @@ usar_mistral() {
 # Función para usar Ollama local
 usar_ollama() {
     query="$*"
-    modelo="qwen2.5:14b"
+    #modelo="qwen2.5:14b"
     url="http://localhost:11434/api/generate"
     
     payload=$(jq -n \
