@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Para que este script funcione en zshrc su nombre debe ser: command_not_found_handler
+# Para que este script funcione en bashrc su nombre debe ser: command_not_found_handle
+#
+# Editar zshrc
+# command_not_found_handler() {
+#    "$HOME/Cocina/scripts/funciones_bashrc/command_not_found_handler" "$@"
+# }
+# source ~/.zshrc
+#
 # Códigos de color heredados
 COLOR_ERROR="\033[31m"
 COLOR_EXITO="\033[32m"
@@ -19,7 +28,7 @@ funcion() {
 
     # Capturar el comando ingresado
     local full_command="$*"
-    local modelo_ollama="qwen2.5:14b"
+    local modelo_ollama="mistral:7b-instruct-v0.3-q4_K_M"
     local modelo_mistral="mistral-small-latest"
     
     echo -e "\n${COLOR_ERROR}Error: El comando \"$full_command\" no se ha encontrado.${COLOR_RESET}"

@@ -1,0 +1,53 @@
+#!/bin/bash
+# $* = tarea compleja
+
+entrada="$*"
+modelo="mistral:7b-instruct-v0.3-q4_K_M"
+url="http://localhost:11434/api/generate"
+
+timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+archivo_md="tarea_compleja_${timestamp}.md"
+
+prompt="Analiza y desglosa esta tarea compleja en Linux:\n1. Interpreta la tarea.\n2. Haz preguntas para aclarar si es necesario.\n3. Lista los pasos ordenados para ejecutar.\nDevuelve todo en formato markdown con listas numeradas. Tarea: $entrada"
+
+payload=$(jq -n --arg model "$modelo" --arg prompt "$prompt" '{model:$model,prompt:$prompt,stream:false}')
+respuesta=$(curl -s -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+
+if [ $? -ne 0 ] || [ -z "$respuesta" ]; then
+  echo -e "\033[31mError: No se pudo obtener respuesta IA\033[0m"
+  exit 1
+fi
+
+echo -e "$respuesta" > "$archivo_md"
+
+echo -e "\033[32mArchivo generado: $archivo_md\nAbriendo en nvim para revisión y edición...\033[0m"
+nvim "$archivo_md"
+
+echo -e "\033[36mEjecutando pasos finales...\033[0m"
+
+# Extraer pasos numerados (líneas que empiecen con número seguido de punto)
+pasos=$(sed -n '/^[0-9]\+\..*/p' "$archivo_md")
+
+if [ -z "$pasos" ]; then
+  echo -e "\033[31mNo se encontraron pasos para ejecutar.\033[0m"
+  exit 1
+fi
+
+IFS=$'\n'
+for paso in $pasos; do
+  # Extrae comando después del número y punto, asumiendo que la línea es etiqueta del paso
+  comando=$(echo "$paso" | sed 's/^[0-9]\+\.\s*//')
+  
+  # Validar seguridad comando
+  for p in "${prohibidos[@]}"; do
+    if [[ "$comando" == *"$p"* ]]; then
+      echo -e "\033[31mComando bloqueado por seguridad: $comando\033[0m"
+      continue 2
+    fi
+  done
+
+  echo -e "\033[34mEjecutando paso: $comando\033[0m"
+  eval "$comando" >> "$archivo_md" 2>&1
+  if [ $? -eq 0 ]; then
+    echo -e "\033
+

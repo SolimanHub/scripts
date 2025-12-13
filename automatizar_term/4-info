@@ -1,0 +1,21 @@
+#!/bin/bash
+# $* = consulta en lenguaje natural
+
+entrada="$*"
+modelo="mistral:7b-instruct-v0.3-q4_K_M"
+url="http://localhost:11434/api/generate"
+
+prompt="Devuelve solo el comando exacto en Arch Linux (sin explicaciones ni formato extra) que responde a: $entrada"
+
+payload=$(jq -n --arg model "$modelo" --arg prompt "$prompt" '{model:$model, prompt:$prompt, stream:false}')
+respuesta=$(curl -s -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+
+if [ $? -ne 0 ] || [ -z "$respuesta" ]; then
+  echo -e "\033[31mError: No se pudo obtener respuesta del servicio IA\033[0m"
+  exit 1
+fi
+
+comando=$(echo "$respuesta" | jq -r '.response' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+echo -e "\033
+
+

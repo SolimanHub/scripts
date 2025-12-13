@@ -1,0 +1,62 @@
+#!/bin/bash
+# $1 = cadena comando mal escrito
+
+entrada="$*"
+#modelo="qwen2.5-coder:1.5b"
+modelo="gemma3:latest"
+url="http://localhost:11434/api/generate"
+
+prompt="Corrige el comando Linux que se muestra a continuación:
+Comando a corregir: \"$entrada\"
+
+Reglas:
+- Si el comando tiene errores, corrige solo esos errores y devuelve el comando válido más parecido.
+- Si el comando es correcto, repítelo igual.
+- Si no puedes corregirlo, responde exactamente: no_suggestions
+- No escribas nada más ni expliques.
+- La corrección debe preservar los argumentos y la estructura original.
+
+Ejemplos:
+Comando a corregir: \"catt fichero.txt\"
+Comando corregido: cat fichero.txt 
+
+Comando a corregir: \"lss\"
+Comando corregido: ls
+
+Comando a corregir: \"chmot 777 archivo.txt\"
+Comando corregido: chmod 777 archivo.txt
+
+Comando a corregir: \"apt-get updat\"
+Comando corregido: apt-get update
+
+Comando a corregir: \"chow juan documento.txt\"
+Comando corregido: chown juan documento.txt
+
+Comando a corregir: \"xoyz\"
+Comando corregido: no_suggestions
+
+Comando corregido:
+"
+
+payload=$(jq -n --arg model "$modelo" --arg prompt "$prompt" '{model:$model, prompt:$prompt, stream:false}')
+respuesta=$(curl -s -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+
+if [ $? -ne 0 ] || [ -z "$respuesta" ]; then
+  echo -e "\033[31mError: No se pudo obtener respuesta del servicio IA\033[0m"
+  exit 1
+fi
+
+correccion=$(echo "$respuesta" | jq -r '.response' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+if [[ "$correccion" = "no_suggestions" || -z "$correccion" ]]; then
+  echo -e "\033[31mNo se encontró corrección para: $entrada\033[0m"
+  exit 1
+fi
+
+echo -e "\033[32mCorrección sugerida: $correccion\033[0m"
+read -rp "¿Ejecutar comando corregido? [s/N] " respuesta
+if [[ "$respuesta" =~ ^[Ss] ]]; then
+  eval "$correccion"
+else
+  echo "Ejecución cancelada."
+fi

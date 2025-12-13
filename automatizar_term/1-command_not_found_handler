@@ -1,0 +1,72 @@
+#!/bin/bash
+# Nombre en zshrc: command_not_found_handler
+# Nombre en bashrc: command_not_found_handle
+
+# Verificación dependencias
+for dep in curl jq; do
+  if ! command -v $dep >/dev/null 2>&1; then
+    echo -e "\033[31mError: Necesitas tener $dep instalado.\033[0m"
+    return 127
+  fi
+done
+
+raiz=$(pwd)
+entrada="$*"
+#modelo="mistral:7b-instruct-v0.3-q4_K_M"
+#modelo="gemma3:1b"
+#modelo="llama3.2:1b"
+#modelo="qwen2.5-coder:1.5b"
+modelo="gemma3:latest"
+url="http://localhost:11434/api/generate"
+
+#prompt="Clasifica estrictamente la siguiente cadena de entrada en la terminal Linux: \"$entrada\". Solo responde con una palabra exacta: \"prompt\" - \"comando\" sin explicaciones, sin datos extra, sin rodeos, responde unicamente la palabra prompt o la palabra comando"
+
+prompt="Tu trabajo es determinar si la siguiente cadena es:
+1. Un comando mal escrito o con error de sintaxis, o
+2. Un prompt (una instrucción natural en lenguaje humano que describe una tarea o pregunta).
+
+Responde únicamente con una de las siguientes palabras:
+- comando
+- prompt
+
+REGLAS:
+- No agregues texto adicional.
+- No uses puntuación ni explicaciones.
+- Si la cadena contiene verbos como: haz, crea, dime, muestra, genera, inserta, elimina, asume que es un prompt.
+- Si parece un comando del sistema mal escrito o con error ortográfico, responde 'comando'.
+- Si es ambiguo, elige la opción más probable según el contexto del uso en terminal Linux.
+
+Ejemplos:
+- lss → comando  
+- chmodd 777 archivo.txt → comando  
+- haz un directorio llamado prueba → prompt  
+- dime la fecha → prompt  
+- chmot archivo → comando  
+- crea un fichero llamado notas.txt → prompt  
+
+la cadena a analizar es: 
+\"$entrada\""
+
+
+payload=$(jq -n --arg model "$modelo" --arg prompt "$prompt" '{model:$model, prompt:$prompt, stream:false}')
+respuesta=$(curl -s -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+if [ $? -ne 0 ] || [ -z "$respuesta" ]; then
+  echo -e "\033[31mError: No se pudo conectar al servicio local de Ollama\033[0m"
+  return 127
+fi
+
+resultado=$(echo "$respuesta" | jq -r '.response' | tr -d '[:space:]')
+
+if [[ "$resultado" != "prompt" && "$resultado" != "comando" ]]; then
+  echo -e "\033[31mError: respuesta IA inválida: '$resultado'\033[0m"
+  return 127
+fi
+
+# Ejecutar el siguiente paso según resultado
+if [ "$resultado" = "prompt" ]; then
+  #echo "if prompt"
+  "$raiz/3-analisis_prompt" "$entrada"
+elif [ "$resultado" = "comando" ]; then
+  #echo "if comando"
+  "$raiz/2-correccion_de_comando" "$entrada"
+fi

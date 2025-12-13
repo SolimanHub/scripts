@@ -1,0 +1,65 @@
+#!/bin/bash
+$* = tarea simple
+
+entrada="$*"
+modelo="mistral:7b-instruct-v0.3-q4_K_M"
+url="http://localhost:11434/api/generate"
+
+prohibidos=(
+"rm -rf /"
+"rm -rf ~"
+"dd if="
+"mkfs"
+"fdisk"
+"parted"
+":(){ :|:& };:"
+"shutdown -h now"
+"reboot"
+"mv / /dev/null"
+"chmod -R 777 /"
+"chown -R root:root /"
+"> /dev/sda"
+"dd of=/dev/sda"
+)
+
+validar_seguridad() {
+local cmd="$1"
+for p in "${prohibidos[@]}"; do
+if [[ $cmd == "$p" ]]; then
+return 1
+fi
+done
+return 0
+}
+
+timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+archivo_md="tarea_simple_${timestamp}.md"
+
+prompt="Genera solo un comando válido y seguro en Arch Linux para esta tarea. Sigue reglas estrictas sin explicaciones: $entrada"
+
+payload=$(jq -n --arg model "$modelo" --arg prompt "$prompt" '{model:$model,prompt:$prompt,stream:false}')
+respuesta=$(curl -s -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+
+if [ $? -ne 0 ]; then
+echo -e "\033[31mError: No se pudo obtener respuesta IA\033[0m"
+exit 1
+fi
+
+comando=$(echo "$respuesta" | jq -r '.response' | sed 's/^[[:space:]]//;s/[[:space:]]$//')
+
+if ! validar_seguridad "$comando"; then
+echo -e "\033[31mComando bloqueado por seguridad.\033[0m"
+exit 1
+fi
+
+echo -e "# Tarea simple - $timestamp\nTarea:\n$entrada\n\n## Comando generado\n```bash\n$comando\n```\n\n## Salida\n```" > "$archivo_md"
+
+echo -e "\033[32mEjecutando comando...\033[0m"
+
+eval "$comando" >> "$archivo_md" 2>&1
+exit_code=$?
+
+echo -e "\n```\n" >> "$archivo_md"
+
+if [ $exit_code -eq 0 ]; then
+echo -e "\033

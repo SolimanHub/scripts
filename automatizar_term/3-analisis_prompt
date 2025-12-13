@@ -1,0 +1,38 @@
+#!/bin/bash
+# $1 = prompt usuario
+
+entrada="$*"
+modelo="gemma3:latest"
+url="http://localhost:11434/api/generate"
+
+prompt="Analiza y clasifica estrictamente el siguiente prompt en Linux, si el prompt esta solicitando informacion de cualquier tipo, tu respuesta debe ser una sola palabra:\n- info\n
+
+- en caso que el prompt no este solictando informacion y sea una instruccion de realizar alguna tarea especifica, tu respuesta debe ser una sola palabra y esa palabra es - \ntarea\n Solo responde con una de esas palabras \"info\" o \"tarea\", el prompt que debes analizar es: $entrada"
+
+payload=$(jq -n --arg model "$modelo" --arg prompt "$prompt" '{model:$model, prompt:$prompt, stream:false}')
+respuesta=$(curl -s -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+
+if [ $? -ne 0 ] || [ -z "$respuesta" ]; then
+  echo -e "\033[31mError: No se pudo obtener respuesta del servicio IA\033[0m"
+  exit 1
+fi
+
+resultado=$(echo "$respuesta" | jq -r '.response' | tr -d '[:space:]')
+
+if [[ "$resultado" != "info" && "$resultado" != "tarea" ]]; then
+  echo -e "\033[31mError: respuesta IA inválida: '$resultado'\033[0m"
+  exit 1
+fi
+
+echo "$resultado"
+
+#if [ "$resultado" =  ]; then
+#  "$HOME/scripts/info" "$entrada"
+#else
+#  "$HOME/scripts/cadena" "$entrada"
+#fi
+if [ "$resultado" = "info" ]; then
+  "$raiz/4-info" "$entrada"
+elif [ "$resultado" = "tarea" ]; then
+  "$raiz/5-cadena" "$entrada"
+fi
