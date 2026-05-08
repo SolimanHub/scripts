@@ -56,7 +56,7 @@ usar_mistral() {
 
 usar_ollama() {
     local payload respuesta comando modelo
-    modelo="${OLLAMA_MODEL:-llama3}"
+    modelo="${OLLAMA_MODEL:-dolphincoder:7b}"
 
     payload=$(jq -n \
         --arg model "$modelo" \
