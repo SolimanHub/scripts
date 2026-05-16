@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Colores ANSI
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -8,7 +7,6 @@ CYAN='\033[0;36m'
 MAGENTA='\033[0;35m'
 RESET='\033[0m'
 
-# Verificar si se proporcionó el prompt como argumento
 if [ $# -eq 0 ]; then
     echo -e "${RED}Uso: $0 \"<prompt>\"${RESET}"
     echo -e "${YELLOW}Ejemplo: $0 \"Escribe un poema corto sobre la programación\"${RESET}"
@@ -25,10 +23,16 @@ usar_mistral() {
         echo -e "${RED}Error: No se ha configurado la variable de entorno MISTRAL_API_KEY${RESET}" >&2
         return 1
     fi
+    # Modelos disponibles:
+    # https://docs.mistral.ai/models/overview
+    # devstral-2512
+    # mistral-medium-3-5
+    # voxtral-mini-transcribe-realtime-2602 (vos a texto)
+    # mistral-small-latest
 
     local payload respuesta respuesta_texto
     payload=$(jq -n \
-        --arg model "mistral-small-latest" \
+        --arg model "devstral-2512" \
         --arg content "$prompt" \
         '{model: $model, messages: [{role: "user", content: $content}], temperature: 0.7}')
 
