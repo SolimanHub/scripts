@@ -1,0 +1,41 @@
+#!/usr/bin/bash
+
+# Directorio actual del script (donde se ejecuta)
+SCRIPT_DIR="$HOME/.config"
+NRO_FILE="$SCRIPT_DIR/nro_wall"
+
+l=()
+
+for x in $(ls $HOME/Imágenes/wallpapers/)
+do
+  if [ $x != 'salvar' ]
+  then
+    l+=("$x")
+    echo $x
+  fi
+done
+
+# Lee el número guardado (si no existe, se inicializará después)
+if [ -f "$NRO_FILE" ]; then
+  while IFS= read -r line
+  do
+    nro="$line"
+  done < "$NRO_FILE"
+else
+  nro=0
+fi
+
+# Ciclo del índice (mantiene la lógica original, aunque omite el índice 0)
+if [ $nro -eq ${#l[@]} ]
+then
+  echo "1" > "$NRO_FILE"
+else
+  echo $((nro+1)) > "$NRO_FILE"
+fi
+
+# Ruta del wallpaper
+wall="$HOME/Imágenes/wallpapers/${l[$nro]}"
+
+# Cambia el fondo con swaybg (mata instancias previas)
+pkill swaybg 2>/dev/null
+swaybg --image "$wall" --mode fill &

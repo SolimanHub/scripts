@@ -84,7 +84,7 @@ haz $query"
 # Función para usar Ollama local
 usar_ollama() {
     archivo_md=$(generar_nombre_archivo_md)
-    modelo="mistral:7b-instruct-v0.3-q4_K_M"
+    modelo="gemma4:e2b"
     url="http://localhost:11434/api/generate"
     
     # Obtener comando de Ollama

@@ -4,6 +4,27 @@
 
 set -euo pipefail
 
+# Ayuda
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    echo "Uso: dime <consulta>"
+    echo "Obtiene un comando de terminal adecuado para tu sistema operativo usando IA."
+    exit 0
+fi
+
+# Verificar dependencias
+for cmd in curl jq; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        error "Necesitas tener instalado '$cmd'. Instálalo con tu gestor de paquetes."
+        exit 1
+    fi
+done
+
+# Verificar que hay consulta
+if [ $# -lt 1 ]; then
+    error "Uso: dime <consulta>"
+    exit 1
+fi
+
 # --- Configuración por defecto ---
 : "${OLLAMA_MODEL:=dolphincoder:7b}"             # Modelo por defecto para Ollama
 : "${OLLAMA_URL:=http://localhost:11434}" # URL de Ollama
@@ -11,6 +32,7 @@ set -euo pipefail
 # --- Funciones auxiliares ---
 error() { echo -e "\033[31mError: $*\033[0m" >&2; }
 exito() { echo -e "\033[32m$*\033[0m"; }
+
 
 # Detección del sistema operativo
 detectar_so() {
@@ -30,14 +52,19 @@ detectar_so() {
     esac
 }
 
+# Construir prompt adaptado al SO detectado
+so=$(detectar_so)
+prompt="Responde solo con el comando exacto para $so, sin texto adicional, explicaciones, markdown ni formato extra. Si añades algo más, la respuesta será inválida. Ejemplo correcto: ls -la. Ejemplo incorrecto: 'El comando es: ls'. Ahora, dame solo el comando para: $*"
+
 # --- Llamadas a las APIs ---
 
 usar_mistral() {
     [ -z "${MISTRAL_API_KEY:-}" ] && return 1
+        #--arg model "mistral-small-latest" \
 
     local payload respuesta comando
     payload=$(jq -n \
-        --arg model "mistral-small-latest" \
+	--arg model "mistral-moderation-2603" \
         --arg content "$prompt" \
         '{model: $model, messages: [{role: "user", content: $content}], temperature: 0.3}')
 
@@ -75,37 +102,46 @@ usar_ollama() {
     return 0
 }
 
-# --- Principal ---
+usar_openrouter() {
+    [ -z "${OPENROUTER_API_KEY:-}" ] && return 1
 
-# Ayuda
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    echo "Uso: dime <consulta>"
-    echo "Obtiene un comando de terminal adecuado para tu sistema operativo usando IA."
-    exit 0
-fi
+    local payload respuesta comando
 
-# Verificar dependencias
-for cmd in curl jq; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        error "Necesitas tener instalado '$cmd'. Instálalo con tu gestor de paquetes."
-        exit 1
-    fi
-done
+    # Modelo elegido: uno rápido y común en OpenRouter
+    payload=$(jq -n \
+        --arg model "openai/gpt-4o-mini" \
+        --arg content "$prompt" \
+        '{model: $model, messages: [{role: "user", content: $content}], temperature: 0.3}')
 
-# Verificar que hay consulta
-if [ $# -lt 1 ]; then
-    error "Uso: dime <consulta>"
-    exit 1
-fi
+    # Envía la petición a OpenRouter
+    respuesta=$(curl -sS --max-time 30 \
+        -X POST "https://openrouter.ai/api/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+        -H "HTTP-Referer: https://github.com/tu-usuario" \
+        -H "X-Title: haz" \
+        -d "$payload") || return 1
 
-# Construir prompt adaptado al SO detectado
-so=$(detectar_so)
-prompt="Responde solo con el comando exacto para $so, sin texto adicional, explicaciones, markdown ni formato extra. Si añades algo más, la respuesta será inválida. Ejemplo correcto: ls -la. Ejemplo incorrecto: 'El comando es: ls'. Ahora, dame solo el comando para: $*"
+    # Muestra la respuesta cruda (igual que en usar_mistral)
+#    echo "la respuesta es: "
+#    echo "$respuesta"
+
+    # Extrae el contenido del mensaje
+    comando=$(echo "$respuesta" | jq -r '.choices[0].message.content')
+    [ -z "$comando" ] || [ "$comando" = "null" ] && return 1
+
+    # Ejecuta el comando extraído (función exito definida externamente)
+    exito "$comando"
+    return 0
+}
+
 
 # Intentar Mistral primero, luego Ollama local
 if usar_mistral; then
     exit 0
 elif usar_ollama; then
+    exit 0
+elif usar_openrouter; then
     exit 0
 else
     error "No se pudo conectar a ningún servicio de IA. Revisa tu conexión o configuración."

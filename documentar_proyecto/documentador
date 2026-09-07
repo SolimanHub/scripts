@@ -7,6 +7,9 @@
 #                -a elem1 ...  -> Solo incluir esos elementos (allowlist)
 #                -I elem1 ...  -> Excluir elementos (denylist)
 #              Sin -a: se incluye todo excepto -I y el script/archivo de salida.
+#              Exclusiones automáticas (siempre activas):
+#                - Todo lo que empiece por .git (.git, .gitignore, ...)
+#                - Archivos o directorios llamados exactamente .env
 # Uso: ./documentador.sh [-a incl...] [-I excl...]
 # =============================================================================
 
@@ -30,9 +33,22 @@ escape_regex() {
 }
 
 # Determina si una ruta (relativa al directorio actual, sin "./" inicial)
-# debe ser excluida según la lista de exclusión (incluye el script y el archivo de salida)
+# debe ser excluida según la lista de exclusión (incluye el script, el archivo
+# de salida y las exclusiones automáticas de .git* / .env)
 debe_excluir() {
     local rel="$1"
+    
+    # --- Exclusiones automáticas ---
+    # .git* (cualquier ruta que empiece con .git)
+    if [[ "$rel" == .git* ]]; then
+        return 0
+    fi
+    # .env (archivo o directorio llamado exactamente .env)
+    local base=$(basename "$rel")
+    if [[ "$base" == ".env" ]]; then
+        return 0
+    fi
+    
     # Excluir el script actual y el archivo de salida (siempre)
     [[ "$rel" == "$SCRIPT_REL" || "$rel" == "$OUTPUT_FILE" ]] && return 0
     
@@ -150,7 +166,7 @@ TIMESTAMP=$(timestamp_ms)
 OUTPUT_FILE="mapa_proyecto_${TIMESTAMP}.md"
 
 INCLUDE_ITEMS=()    # Elementos a incluir (allowlist)
-EXCLUDE_ITEMS=()    # Elementos a excluir (denylist)
+EXCLUDE_ITEMS=()    # Elementos a excluir (denylist - se añadirán automáticos más abajo)
 
 # -----------------------------------------------------------------------------
 # Parseo de argumentos (soporta -a y -I en cualquier orden)
@@ -180,9 +196,11 @@ while [[ $i -lt ${#args[@]} ]]; do
     esac
 done
 
-# Añadir exclusiones automáticas
+# Añadir exclusiones automáticas (adicionales a las del usuario)
 EXCLUDE_ITEMS+=("$SCRIPT_REL")
 EXCLUDE_ITEMS+=("$OUTPUT_FILE")
+# Nota: las exclusiones .git* y .env están implementadas directamente en debe_excluir
+# para mayor claridad y rendimiento, no se añaden como elementos literales aquí.
 
 # -----------------------------------------------------------------------------
 # 1. Generar el árbol del proyecto
